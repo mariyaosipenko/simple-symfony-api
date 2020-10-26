@@ -54,7 +54,7 @@ class ProductRepository extends ServiceEntityRepository
     }
     */
 
-    public function findProducts($page, $limit, $filters)
+    public function findProducts($product, $attributes, $pagination)
     {
         try {
             $totalCount = $this->createQueryBuilder('p')
@@ -64,31 +64,32 @@ class ProductRepository extends ServiceEntityRepository
         } catch (NoResultException $e) {
             $totalCount = 0;
         }
-        $limit = in_array($limit, [5, 10, 20, 50, 100]) ? $limit : 10;
-        $page = (int)$page > 0 ? (int)$page : 1;
+        $limit = in_array($pagination['per_page'], [5, 10, 20, 50, 100]) ? $pagination['per_page'] : 10;
+        $page = $pagination['page'] > 0 ? $pagination['page'] : 1;
         if(($page - 1) * $limit > $totalCount) {
             $page = (int) $totalCount / $limit;
         }
         $offset = ($page - 1) * $limit;
         $qb = $this->createQueryBuilder('p');
-        foreach ($filters as $key => $filter) {
+        foreach ($product as $key => $filter) {
             if (!empty($filter)) {
                 if($key == 'status'){
                     $qb->andWhere('p.status = :status');
                     $qb->setParameter('status', $filter == 'inactive' ? 0 : 1);
-                } elseif ($key == 'attributes') {
-                    $qb->leftJoin('p.attributes','a');
-                    foreach($filter as $attribute) {
-                        $qb->andWhere("a.attributeKey = :k");
-                        $qb->andWhere("a.attributeValue = :v");
-                        $qb->setParameter('k', $attribute['key']);
-                        $qb->setParameter('v', $attribute['value']);
-                    }
                 }
                 else {
                     $qb->andWhere("p.$key LIKE :$key");
                     $qb->setParameter($key, "%$filter%");
                 }
+            }
+        }
+        if ($attributes) {
+        $qb->leftJoin('p.attributes','a');
+            foreach($attributes as $attribute) {
+                $qb->andWhere("a.attributeKey = :k");
+                $qb->andWhere("a.attributeValue = :v");
+                $qb->setParameter('k', $attribute['attributeKey']);
+                $qb->setParameter('v', $attribute['attributeValue']);
             }
         }
         $qb->orderBy('p.id', 'ASC');
@@ -103,9 +104,15 @@ class ProductRepository extends ServiceEntityRepository
             $data[] = $product->toArray();
         }
         return [
-            'products' => $data,
-            'totalCount' => $totalCount,
-            'filteredCount' => $filteredCount,
+            'Product' => $data,
+            'Attribute' => $attributes,
+            'Pagination' => [
+                'count' => $filteredCount,
+                'total' => $totalCount,
+                'per_page' => $limit,
+                'page' => $page,
+                'pages' => ceil ($filteredCount / $limit),
+            ],
         ];
 
     }

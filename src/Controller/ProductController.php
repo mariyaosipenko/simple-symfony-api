@@ -8,8 +8,9 @@ use App\Repository\ProductRepository;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Validation;
 
 /**
  * Class ProductController
@@ -26,25 +27,6 @@ class ProductController
         $this->productRepository = $productRepository;
     }
 
-    /**
-     * @Route("/add", name="add_product", methods={"POST"})
-     * @param Request $request
-     * @return JsonResponse
-     */
-    public function add(Request $request): JsonResponse
-    {
-        $data = json_decode($request->getContent(), true);
-
-        $name = $data['name'];
-        $sku = $data['sku'];
-        $category = $data['category'];
-        $brand = $data['brand'];
-        if (empty($name) || empty($sku) || empty($category) || empty($brand)) {
-            throw new NotFoundHttpException('Expecting mandatory parameters!');
-        }
-        $this->productRepository->saveProduct($name, $sku, $category, $brand);
-        return new JsonResponse(['status' => 'Product created!'], Response::HTTP_CREATED);
-    }
 
     /**
      * @Route("/get/{id}", name="get_one_product", methods={"GET"})
@@ -53,7 +35,7 @@ class ProductController
      */
     public function getOneProduct($id): JsonResponse
     {
-        $product = $this->productRepository->findOneBy(['id' => $id]);
+        $product = $this->productRepository->findOneBy(['id' => (int)$id]);
         if (!$product) {
             return new JsonResponse(['status' => 'product not found'], Response::HTTP_NOT_FOUND);
         }
@@ -69,11 +51,50 @@ class ProductController
     public function getAllProducts(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
-        $page = $data['page'] ?? 1;
-        $limit = $data['limit'] ?? 10;
-        $filters = $data['filters'] ?? [];
-        $result = $this->productRepository->findProducts($page, $limit, $filters);
-        return new JsonResponse($result, Response::HTTP_OK);
+        $validator = Validation::createValidator();
+        $constraint = new Assert\Collection([
+            'Product' => new Assert\Collection([
+                'id' => new Assert\Choice( [new Assert\Type(['type' => 'integer']), '']),
+                'name' => new Assert\Choice( [new Assert\Type(['type' => 'string']), '']),
+                'sku' => new Assert\Choice( [new Assert\Type(['type' => 'string']), '']),
+                'category' => new Assert\Choice( [new Assert\Type(['type' => 'string']), '']),
+                'brand' => new Assert\Choice( [new Assert\Type(['type' => 'string']), '']),
+                'stock' => new Assert\Choice( [new Assert\Type(['type' => 'integer']), '']),
+                'price' => new Assert\Choice( [new Assert\Type(['type' => 'float']), '']),
+                'discountPrice' => new Assert\Choice( [new Assert\Type(['type' => 'float']), '']),
+                'status' =>  new Assert\Choice(['inactive', 'active', '']),
+            ]),
+            'Attribute'=> new Assert\Optional([
+                new Assert\Type('array'),
+                new Assert\All([
+                    new Assert\Collection([
+                        'attributeKey' => [
+                            new Assert\NotBlank(),
+                            new Assert\Type(['type' => 'string'])
+                        ],
+                        'attributeValue' => [
+                            new Assert\NotBlank(),
+                            new Assert\Type(['type' => 'string'])
+                        ],
+                    ]),
+                ]),
+            ]),
+            'Pagination'=> new Assert\Collection([
+                'per_page' => new Assert\Type(['type' => 'integer']),
+                'page' => new Assert\Type(['type' => 'integer']),
+            ]),
+        ]);
+        $violations = $validator->validate($data, $constraint);
+        if (0 === count($violations)) {
+            $result = $this->productRepository->findProducts($data['Product'], $data['Attribute'], $data['Pagination']);
+            return new JsonResponse($result, Response::HTTP_OK);
+        } else {
+            $errorMessage = $violations[0]->getMessage();
+            foreach ($violations as $violation){
+                $errorMessage .= $violation->getMessage() . PHP_EOL;
+            }
+            return new JsonResponse($errorMessage, Response::HTTP_I_AM_A_TEAPOT);
+        }
     }
 
     /**
@@ -83,7 +104,7 @@ class ProductController
      */
     public function changeStatus($id): JsonResponse
     {
-        $product = $this->productRepository->findOneBy(['id' => $id]);
+        $product = $this->productRepository->findOneBy(['id' => (int)$id]);
         if (!$product) {
             return new JsonResponse(['status' => 'product not found'], Response::HTTP_NOT_FOUND);
         }

@@ -271,8 +271,8 @@ class Product
         $arrayAttributes = [];
         foreach ($this->getAttributes() as $attribute) {
             $arrayAttributes[] = [
-                'key' => $attribute->getAttributeKey(),
-                'value' => $attribute->getAttributeValue()
+                'attributeKey' => $attribute->getAttributeKey(),
+                'attributeValue' => $attribute->getAttributeValue()
             ];
         }
         return [
